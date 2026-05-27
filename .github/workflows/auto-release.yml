@@ -109,6 +109,39 @@ jobs:
             "${MODULE_NAME}-${VERSION#v}.tar.gz" \
             SHA256SUMS
 
+      # --- Cascade: Notify dependent molecules ---
+      - name: Notify dependent molecules
+        if: steps.check.outputs.skip == 'false' && steps.bump.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CASCADE_PAT }}
+        run: |
+          VERSION="${{ steps.bump.outputs.version }}"
+          ATOM_NAME=$(basename "$GITHUB_REPOSITORY")
+          ATOM_REPO="${GITHUB_REPOSITORY}"
+
+          # Read dependents list
+          if [[ ! -f ".github/dependents.json" ]]; then
+            echo "No .github/dependents.json found — skipping cascade."
+            exit 0
+          fi
+
+          echo "Dispatching cascade update to dependent molecules..."
+
+          # Read each molecule from dependents.json and dispatch
+          for MOLECULE in $(jq -r '.molecules[]' .github/dependents.json); do
+            echo "  → Dispatching to ${MOLECULE}..."
+            gh api \
+              --method POST \
+              "/repos/PlatformStackPulse/${MOLECULE}/dispatches" \
+              -f event_type="atom-release" \
+              -f "client_payload[atom_name]=${ATOM_NAME}" \
+              -f "client_payload[atom_version]=${VERSION}" \
+              -f "client_payload[atom_repo]=${ATOM_REPO}" \
+              || echo "    ⚠️ Failed to dispatch to ${MOLECULE} (may need CASCADE_PAT secret)"
+          done
+
+          echo "Cascade dispatch complete."
+
       - name: Summary
         if: steps.check.outputs.skip == 'false' && steps.bump.outputs.skip != 'true'
         run: |
