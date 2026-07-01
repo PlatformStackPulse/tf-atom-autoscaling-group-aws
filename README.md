@@ -3,9 +3,40 @@
 [![CI](https://github.com/PlatformStackPulse/tf-atom-autoscaling-group-aws/actions/workflows/ci.yml/badge.svg)](https://github.com/PlatformStackPulse/tf-atom-autoscaling-group-aws/actions/workflows/ci.yml)
 ![Terraform](https://img.shields.io/badge/terraform-%3E%3D1.6.0-blueviolet)
 
-## Purpose
+Terraform atom module that manages an AWS Auto Scaling Group (ASG) for a fleet of EC2 instances, driven by a launch template and integrated with the [tf-label](https://github.com/PlatformStackPulse/tf-label) naming/tagging context.
 
-Terraform atom: AWS Auto Scaling Group - manages a fleet of EC2 instances with scaling.
+## Features
+
+- **Launch-template driven** — attaches an existing launch template by `id` and `version` (defaults to `$Latest`).
+- **Capacity control** — configurable `min_size`, `max_size`, and `desired_capacity`.
+- **Multi-AZ placement** — spreads instances across the supplied `subnet_ids` (validated to be non-empty).
+- **Load-balancer aware** — optionally registers with one or more `target_group_arns`.
+- **Health checks** — `EC2` or `ELB` health-check type with a configurable grace period.
+- **Instance refresh** — optional rolling instance refresh with a configurable `min_healthy_percentage`.
+- **Consistent naming & tagging** — name and tags are derived from the tf-label context; every tag is propagated at launch.
+- **Toggleable** — set `enabled = false` (via input or context) to create no resources.
+
+## Usage
+
+```hcl
+module "asg" {
+  source = "git::https://github.com/PlatformStackPulse/tf-atom-autoscaling-group-aws.git?ref=v1.0.0"
+
+  # tf-label identity
+  namespace = "eg"
+  stage     = "prod"
+  name      = "web"
+
+  # required inputs
+  subnet_ids         = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"]
+  launch_template_id = aws_launch_template.web.id
+
+  # optional capacity
+  min_size         = 2
+  max_size         = 6
+  desired_capacity = 3
+}
+```
 
 ## Module Documentation
 
@@ -78,3 +109,19 @@ Terraform atom: AWS Auto Scaling Group - manages a fleet of EC2 instances with s
 | <a name="output_id"></a> [id](#output\_id) | ID of the Auto Scaling group |
 | <a name="output_name"></a> [name](#output\_name) | Name of the Auto Scaling group |
 <!-- END_TF_DOCS -->
+
+## Tests
+
+Unit tests use a mocked AWS provider (no credentials, no real API calls) and assert on
+plan-known values — the tf-label `id`, the planned resource count, and input pass-throughs.
+
+```bash
+terraform init -backend=false
+terraform test -test-directory=tests/unit
+
+# or via the Makefile
+make test-unit
+```
+
+Integration tests (which provision real infrastructure and require AWS credentials) live in
+`tests/integration/` and run with `terraform test -test-directory=tests/integration` (`make test-integration`).
